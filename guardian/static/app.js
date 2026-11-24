@@ -1,5 +1,11 @@
 "use strict";
 const $ = id => document.getElementById(id);
+function displayStatus(value) {
+  return ({partial: "Review required", completed: "Finished", not_run: "Not run", not_started: "Not started",
+    awaiting_approval: "Awaiting approval", passed: "Passed", failed: "Failed", incomplete: "Checks unavailable",
+    approve: "Accepted", reject: "Rejected", accepted_risk: "Risk accepted"})[value]
+    || String(value ?? "Unknown").replaceAll("_", " ");
+}
 const namespace = "http://www.w3.org/2000/svg";
 let graph = null, selected = null, view = [0, 0, 1000, 620], drag = null;
 let currentScanId = null, currentReport = null;
@@ -126,7 +132,7 @@ function showReport(scanId, report, dependencyGraph) {
   $("results").hidden = false;
   $("repo-name").textContent = report.repository?.url || "Repository scan";
   $("commit").textContent = `Commit ${report.repository?.commit || "unavailable"}`;
-  $("coverage").textContent = `Dependency status: ${report.dependency_status || "not recorded in this older scan"}. Coverage: ${report.coverage_status || report.status}.`;
+  $("coverage").textContent = `Dependency status: ${report.dependency_status || "not recorded in this older scan"}. Coverage: ${displayStatus(report.coverage_status || report.status)}.`;
   $("project-select").replaceChildren(new Option("Whole repository", ""));
   $("project-table").replaceChildren();
   for (const project of report.projects || []) {
@@ -184,7 +190,7 @@ $("project-select").addEventListener("change", async () => {
     selected = null; $("details").hidden = true; $("details-hint").hidden = false;
     for (const stat of document.querySelectorAll("[data-stat]")) stat.querySelector("strong").textContent = graph.statistics[stat.dataset.stat] ?? "—";
     const project = (currentReport.projects || []).find(item => item.id === projectId);
-    $("coverage").textContent = project ? `${project.name}: ${project.dependency_status}. Completeness: ${project.completeness_status}. Observed paths can include declarations and inference; verified reachability excludes them.` : `Dependency status: ${currentReport.dependency_status}. Coverage: ${currentReport.coverage_status}.`;
+    $("coverage").textContent = project ? `${project.name}: ${project.dependency_status}. Completeness: ${project.completeness_status}. Observed paths can include declarations and inference; verified reachability excludes them.` : `Dependency status: ${currentReport.dependency_status}. Coverage: ${displayStatus(currentReport.coverage_status)}.`;
     $("unresolved-list").textContent = JSON.stringify(graph.unresolved || [], null, 2);
     $("download-graph").href = `/api/scans/${currentScanId}/graph${projectId ? "?project_id=" + encodeURIComponent(projectId) : ""}`;
     drawGraph();
@@ -198,7 +204,7 @@ async function followScan(scanId) {
     const state = await getJSON(`/api/scans/${scanId}`);
     if (generation !== scanGeneration) return;
     if (window.guardianShell?.pipeline()) window.guardianShell.refreshStatus();
-    else showStatus(`Discovery ${state.status}: ${state.stage || "finished"}${state.error ? ". " + state.error : ""}`);
+    else showStatus(`Discovery ${displayStatus(state.status)}: ${state.stage || "finished"}${state.error ? ". " + state.error : ""}`);
     if (!["queued", "running"].includes(state.status)) {
       const report = await getJSON(`/api/scans/${scanId}/report`);
       if (generation !== scanGeneration) return;

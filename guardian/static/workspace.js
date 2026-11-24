@@ -1,5 +1,5 @@
 "use strict";
-const viewNames = {overview: "Overview", pipeline: "Live pipeline", dependencies: "Dependencies", findings: "Findings & AI", remediation: "Remediation", reports: "Report & settings"};
+const viewNames = {overview: "Overview", pipeline: "Live pipeline", dependencies: "Dependencies", findings: "Findings and evidence", remediation: "Remediation", reports: "Reports and settings"};
 const stageNames = {discover: "Discover", detect: "Detect", analyze: "Analyze", remediate: "Remediate", validate: "Validate"};
 let workspaceScan = null, workspaceGeneration = 0, workspacePipeline = null, reportGeneration = 0;
 let workspaceTimer = null, currentView = "overview", stageSignature = "";
@@ -18,7 +18,8 @@ function renderStageDetails(state) {
   const module = state?.modules?.[key];
   for (const id of ["pipeline-stage-detail", "remediation-stage-detail"]) {
     const panel = $(id); panel.replaceChildren();
-    addText(panel, "h3", `${stageNames[key]} · ${guardianPipelineState.stageLabel(state, key)}`);
+    panel.hidden = id === "remediation-stage-detail" && !selectedPipelineStage;
+    addText(panel, "h3", `${stageNames[key]} · ${guardianPipelineState.stageLabel(state, key, workspaceSummary)}`);
     if (module?.status === "running") addText(panel, "p", state.stage, "hint");
     else if (!module || module.status === "not_started") addText(panel, "p", "This stage has not started. Its results will appear here.", "hint");
     else {
@@ -30,6 +31,7 @@ function renderStageDetails(state) {
 }
 
 function navigateView(name, updateHash = true) {
+  const previousView = currentView;
   currentView = Object.hasOwn(viewNames, name) ? name : "overview";
   document.querySelectorAll("[data-view]").forEach(section => section.hidden = section.dataset.view !== currentView);
   document.querySelectorAll("[data-route]").forEach(link => {
@@ -42,6 +44,7 @@ function navigateView(name, updateHash = true) {
   if (updateHash && location.hash !== "#" + currentView) history.pushState(null, "", `${location.pathname}${location.search}#${currentView}`);
   if (currentView === "dependencies" && graph) drawGraph();
   if (currentView === "reports") refreshReport().catch(error => $("report-status").textContent = error.message);
+  if (previousView !== currentView) window.scrollTo(0, 0);
 }
 window.addEventListener("hashchange", () => navigateView(location.hash.slice(1), false));
 window.addEventListener("popstate", () => {
@@ -59,11 +62,12 @@ document.querySelectorAll("[data-route]").forEach(link => link.addEventListener(
 }));
 
 function statusTag(parent, value) {
-  const tag = addText(parent, "span", value || "unknown", "status-tag"); tag.dataset.state = value; return tag;
+  const tag = addText(parent, "span", displayStatus(value), "status-tag"); tag.dataset.state = value; return tag;
 }
 function resetWorkspace() {
   scanGeneration++; detectionGeneration++; analysisGeneration++;
   window.guardianRemediation.reset();
+  window.guardianRepositoryValidation?.reset();
   graph = null; currentScanId = currentReport = detectionReport = analysisData = analysisReachability = null;
   document.querySelectorAll("[data-needs-scan]").forEach(node => node.hidden = true);
   document.querySelectorAll("[data-empty-scan]").forEach(node => node.hidden = false);
@@ -114,6 +118,12 @@ async function refreshHistory() {
 }
 
 function drawPipeline(state) {
+  const applied = workspaceSummary?.repository_validation;
+  if (!state && applied?.applied && applied.after_scan_id === workspaceScan) {
+    state = {status: "completed", modules: {discover: {status: "completed"},
+      detect: {status: applied.checks.advisory_coverage === "passed" ? "completed" : "incomplete"},
+      analyze: {status: "not_run"}, remediate: {status: "completed"}, validate: {status: applied.status}}};
+  }
   const focused = document.activeElement?.closest(".stage-select");
   const focusedRail = focused?.closest("ol")?.id, focusedStage = focused?.closest("li")?.dataset.stage;
   const active = guardianPipelineState.activeStage(state);
@@ -126,10 +136,10 @@ function drawPipeline(state) {
       li.dataset.active = String(key === active);
       if (key === active) li.setAttribute("aria-current", "step");
       const button = addText(li, "button", "", "stage-select"); button.type = "button";
-      button.setAttribute("aria-label", `${title}: ${guardianPipelineState.stageLabel(state, key)}. Show stage results`);
+      button.setAttribute("aria-label", `${title}: ${guardianPipelineState.stageLabel(state, key, workspaceSummary)}. Show stage results`);
       button.setAttribute("aria-pressed", String(key === (selectedPipelineStage || active)));
       addText(button, "span", "", "stage-dot"); addText(button, "strong", title);
-      addText(button, "span", guardianPipelineState.stageLabel(state, key), "stage-label");
+      addText(button, "span", guardianPipelineState.stageLabel(state, key, workspaceSummary), "stage-label");
       if (module.attempts) addText(button, "span", `Attempt ${module.attempts}`, "stage-attempt");
       if (module.error) addText(li, "p", module.error, "hint");
       button.addEventListener("click", () => {selectedPipelineStage = key; drawPipeline(workspacePipeline);});
@@ -143,7 +153,7 @@ function drawPipeline(state) {
   if (!events.length) addText($("pipeline-events"), "li", state ? "Waiting for first module event." : "This scan used individual module controls. Start a pipeline for checkpoint activity.");
   for (const event of events.slice(-60).reverse()) {
     const li = document.createElement("li"); addText(li, "time", new Date(event.at).toLocaleString());
-    addText(li, "p", `${event.module ? stageNames[event.module] + " · " : ""}${event.event.replaceAll("_", " ")}${event.status ? " · " + event.status : ""}`);
+    addText(li, "p", `${event.module ? stageNames[event.module] + " · " : ""}${event.event.replaceAll("_", " ")}${event.status ? " · " + displayStatus(event.status) : ""}`);
     if (event.error) addText(li, "p", event.error, "hint");
     $("pipeline-events").append(li);
   }
@@ -161,9 +171,12 @@ async function followWorkspacePipeline(generation) {
   if (!response.ok) throw new Error("Pipeline state unavailable");
   const state = await response.json();
   if (generation !== workspaceGeneration) return;
+  const previousStatus = workspacePipeline?.status;
   workspacePipeline = state;
   drawPipeline(state);
   refreshPipelineStatus();
+  if (currentView === "pipeline" && (!previousStatus || ["queued", "running"].includes(previousStatus)) &&
+      ["awaiting_approval", "completed"].includes(state.status)) navigateView("remediation");
   document.querySelectorAll("#run-detection,#run-analysis,#prepare-fixes,#validate-fixes").forEach(button => {
     if (["queued", "running", "cancelling"].includes(state.status)) button.disabled = true;
   });
@@ -199,17 +212,18 @@ async function refreshReport() {
   const report = await getJSON(`/api/scans/${scan}/summary`);
   if (generation !== reportGeneration || scan !== workspaceScan) return;
   workspaceSummary = report;
-  refreshPipelineStatus(); renderStageDetails(workspacePipeline);
+  refreshPipelineStatus(); drawPipeline(workspacePipeline);
   $("overview-components").textContent = report.statistics?.component_count ?? "—";
   $("overview-advisories").textContent = report.advisories ?? "—";
-  const verification = report.validation?.status || "not_run";
-  $("overview-verification").textContent = verification === "not_run" ? "Not run" : verification.charAt(0).toUpperCase() + verification.slice(1);
+  const applied = report.repository_validation?.after_scan_id === scan ? report.repository_validation : null;
+  const verification = applied?.status || report.validation?.status || "not_run";
+  $("overview-verification").textContent = displayStatus(verification);
   $("report-status").textContent = report.controlled_fixture ? "Controlled demo fixture · live source intelligence · review decisions required." : "Original evidence and derived validation results are separate artifacts.";
   $("report-outcome").replaceChildren();
   statusTag($("report-outcome"), verification);
-  addText($("report-outcome"), "p", verification === "passed" ? "Required verification checks passed for the reported independent proposals." : "Verification is scoped. Missing checks, remaining review signals, or unreviewed patches prevent a complete pass.");
+  addText($("report-outcome"), "p", applied ? `Local checkout updated. Rescanned vulnerability findings: ${applied.remaining_vulnerabilities}. Build/test results are listed in Remediation.` : verification === "passed" ? "Required verification checks passed for the reported independent proposals." : "Verification is scoped. Missing checks, remaining review signals, or unreviewed patches prevent a complete pass.");
   for (const [title, value] of [["Source coverage", report.coverage || "unknown"], ["Source policy", report.policy || "not_run"], ["Original SBOM", report.sbom || "not_run"], ["Evidence records", report.evidence_count ?? "—"]]) {
-    addText($("report-outcome"), "p", `${title}: ${value}`, "hint");
+    addText($("report-outcome"), "p", `${title}: ${displayStatus(value)}`, "hint");
   }
   if (report.repository?.commit) addText($("report-outcome"), "p", `Base commit: ${report.repository.commit}`, "hint");
   for (const result of report.validation?.results || []) {
@@ -248,6 +262,7 @@ async function loadGatewayStatus() {
 
 window.addEventListener("guardian:scan", event => {
   if (event.detail.scanId !== workspaceScan) return;
+  window.guardianRepositoryValidation?.load(workspaceScan);
   document.querySelectorAll("[data-needs-scan]").forEach(node => node.hidden = false);
   document.querySelectorAll("[data-empty-scan]").forEach(node => node.hidden = true);
   for (const link of document.querySelectorAll(".exports a[href]")) link.removeAttribute("aria-disabled");

@@ -14,8 +14,7 @@ data/
 *.sqlite3
 *.db
 
-# Test outputs & verification artifacts
-output/
+# Test outputs & caches
 .pytest_cache/
 .coverage
 htmlcov/

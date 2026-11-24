@@ -1,0 +1,11 @@
+{
+  "scan_id": "d84f71502ba74838a7aa97e340071e27",
+  "views": 6,
+  "mobile_width": 375,
+  "landscape_width": 812,
+  "errors": [],
+  "export_checks": 12,
+  "validation": "partial",
+  "tests": "not_run",
+  "fixture_approval": "automated controlled test only"
+}

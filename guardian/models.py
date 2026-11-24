@@ -220,6 +220,17 @@ class ValidationRequest(BaseModel):
     run_tests: bool = False
 
 
+class RemediationSelectionRequest(BaseModel):
+    digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    selected: list[str] = Field(default_factory=list, max_length=100)
+
+
+class RepositoryValidationRequest(RemediationSelectionRequest):
+    receipt: str = Field(pattern=r"^[0-9a-f]{64}$")
+    reviewed_changes: bool = False
+    run_tests: bool = False
+
+
 class Finding(BaseModel):
     finding_id: str
     scan_id: str

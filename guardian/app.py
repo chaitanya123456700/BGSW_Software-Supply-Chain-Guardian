@@ -7,14 +7,14 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from .files import write_json
 from .ingestion import validate_repository_url
-from .models import DetectionRequest, Inventory, PipelineRequest, ScanRequest, PatchReviewRequest, ValidationRequest
+from .models import DetectionRequest, Inventory, PipelineRequest, ScanRequest, PatchReviewRequest, ValidationRequest, RemediationSelectionRequest, RepositoryValidationRequest
 from .graph import build_graph
 from .pipeline import now, scan_repository
 from .process import WORKSPACE
@@ -22,9 +22,11 @@ from .phase2 import run_detection
 from .orchestrator import ACTIVE, JobConflict, JobStore, Orchestrator
 from .ai import AIConfig, AIGateway
 from .analysis import run_analysis
-from .remediation import run_remediation, reviews, review_plan, verify_plan
+from .remediation import checkout_target, digest, run_remediation, reviews, review_plan, snapshot, source, verify_plan
 from .validation import run_validation
 from .demo import DEMO_URL
+from .remediation_preview import apply_selection, draft_plan, export_zip
+from .repository_validation import run_repository_validation
 
 
 def create_app(data_directory: Path | None = None, *, osv_transport=None, deps_transport=None, metadata_transport=None, ai_config=None, ai_transport=None) -> FastAPI:
@@ -56,7 +58,7 @@ def create_app(data_directory: Path | None = None, *, osv_transport=None, deps_t
             if state.get("status") in {"queued", "running"}:
                 state.update(status="failed", stage="Detection interrupted by application restart")
                 write_json(status_path, state)
-        for status_path in [*data.glob("*/artifacts/analysis_status.json"), *data.glob("*/artifacts/remediation_status.json"), *data.glob("*/artifacts/validation_status.json")]:
+        for status_path in [*data.glob("*/artifacts/analysis_status.json"), *data.glob("*/artifacts/remediation_status.json"), *data.glob("*/artifacts/validation_status.json"), *data.glob("*/artifacts/repository_validation_status.json")]:
             state = json.loads(status_path.read_text())
             if state.get("status") in {"queued", "running"}:
                 state.update(status="failed", stage="Analysis interrupted by application restart")
@@ -232,6 +234,10 @@ def create_app(data_directory: Path | None = None, *, osv_transport=None, deps_t
                 if result.get("validation"):
                     result["validation"] = {"status": "stale", "results": []}
                 result["warnings"].append(str(exc))
+        if (path / "artifacts/repository_validation_status.json").is_file():
+            applied = repository_validation_state(scan_id)
+            if applied.get("report"):
+                result["repository_validation"] = {**applied["report"], "status": applied["status"]}
         return result
 
     @app.post("/api/pipelines", status_code=202)
@@ -547,6 +553,113 @@ def create_app(data_directory: Path | None = None, *, osv_transport=None, deps_t
     @app.post("/api/scans/{scan_id}/remediate", status_code=202)
     def start_remediation(scan_id: str):
         return submit_remediation(scan_id, "remediation")
+
+    @app.get("/api/scans/{scan_id}/remediation-preview")
+    def get_remediation_preview(scan_id: str):
+        try:
+            return draft_plan(directory(scan_id))[0]
+        except (ValueError, OSError, KeyError) as exc:
+            raise HTTPException(409, str(exc)) from exc
+
+    @app.post("/api/scans/{scan_id}/remediation-preview")
+    def select_remediation_preview(scan_id: str, body: RemediationSelectionRequest):
+        try:
+            return apply_selection(directory(scan_id), body.digest, body.selected)[0]
+        except (ValueError, OSError, KeyError) as exc:
+            raise HTTPException(409, str(exc)) from exc
+
+    @app.get("/api/scans/{scan_id}/repository-validation")
+    def repository_validation_state(scan_id: str):
+        state_path = directory(scan_id) / "artifacts/repository_validation_status.json"
+        if not state_path.exists():
+            return {"status": "not_started", "stage": "Repository changes have not been applied"}
+        state = json.loads(state_path.read_text())
+        report = state.get("report", {})
+        if report.get("applied"):
+            try:
+                if digest(snapshot(checkout_target(directory(report["scan_id"]))[1])) != report["after_sha256"]:
+                    state.update(status="stale", stage="The local repository changed after this validation; run a fresh scan")
+            except (ValueError, OSError, KeyError):
+                state.update(status="stale", stage="The applied checkout is no longer available for verification")
+        return state
+
+    @app.get("/api/scans/{scan_id}/repository-validation/report")
+    def repository_validation_report(scan_id: str):
+        path = directory(scan_id) / "artifacts/repository_validation_report.json"
+        if not path.is_file():
+            raise HTTPException(404, "Repository validation report is not available")
+        return FileResponse(path, media_type="application/json", filename="repository-validation.json")
+
+    @app.post("/api/scans/{scan_id}/repository-validation", status_code=202)
+    def start_repository_validation(scan_id: str, body: RepositoryValidationRequest):
+        path = directory(scan_id)
+        if not body.reviewed_changes or not body.selected:
+            raise HTTPException(409, "Explicit review of the selected changes is required before updating the local checkout")
+        with detection_lock:
+            if remediation_busy(scan_id):
+                raise HTTPException(409, "Another stage owns this scan")
+            try:
+                selection, _ = apply_selection(path, body.digest, body.selected)
+                if selection["validation"].get("receipt_sha256") != body.receipt:
+                    raise ValueError("The reviewed draft changed; preview and review it again")
+            except (ValueError, OSError, KeyError) as exc:
+                raise HTTPException(409, str(exc)) from exc
+            if not slots.acquire(blocking=False):
+                raise HTTPException(429, "Worker capacity reached")
+            remediation_jobs.add(scan_id)
+        state = {"status": "queued", "stage": "Waiting to apply reviewed changes and rescan the local repository"}
+        status_path = path / "artifacts/repository_validation_status.json"
+        write_json(status_path, state)
+
+        def execute_repository_validation():
+            def update(stage):
+                state.update(status="running", stage=stage)
+                write_json(status_path, state)
+            try:
+                report = run_repository_validation(path, body.digest, body.selected, body.receipt, run_tests=body.run_tests,
+                    osv_transport=osv_transport, metadata_transport=metadata_transport, update=update)
+                state.update(status=report["status"], stage="Repository remediation and rescan finished", report=report)
+            except Exception as exc:
+                state.update(status="failed", stage="Repository validation failed", error=str(exc)[:2000])
+            finally:
+                try:
+                    write_json(status_path, state)
+                finally:
+                    with detection_lock:
+                        remediation_jobs.discard(scan_id)
+                    slots.release()
+        try:
+            app.state.executor.submit(execute_repository_validation)
+        except Exception:
+            with detection_lock:
+                remediation_jobs.discard(scan_id)
+            slots.release()
+            state.update(status="failed", stage="Worker submission failed")
+            write_json(status_path, state)
+            raise
+        return state
+
+    @app.get("/api/scans/{scan_id}/remediation-preview/download")
+    def download_remediation_preview(scan_id: str, digest: str = Query(pattern=r"^[0-9a-f]{64}$"),
+                                     selected: str = Query(default="", max_length=7000), file: str | None = Query(default=None, max_length=1000)):
+        try:
+            identifiers = selected.split(",") if selected else []
+            if not identifiers or len(identifiers) > 100:
+                raise ValueError("Apply at least one remedy before downloading")
+            selection, full_diff = apply_selection(directory(scan_id), digest, identifiers)
+            if file == "guardian-draft-validation.json":
+                return JSONResponse(selection["validation"], headers={
+                    "Content-Disposition": 'attachment; filename="guardian-draft-validation.json"', "Cache-Control": "no-store"})
+            if file is not None:
+                item = next((item for item in selection["files"] if item["path"] == file), None)
+                if item is None:
+                    raise ValueError("File is not part of the selected changes")
+                return Response(item["content"].encode(), media_type="application/json",
+                                headers={"Content-Disposition": f'attachment; filename="{Path(file).name}"', "Cache-Control": "no-store"})
+            return Response(export_zip(selection, full_diff), media_type="application/zip",
+                            headers={"Content-Disposition": 'attachment; filename="guardian-selected-changes.zip"', "Cache-Control": "no-store"})
+        except (ValueError, OSError, KeyError) as exc:
+            raise HTTPException(409, str(exc)) from exc
 
     @app.post("/api/scans/{scan_id}/validate", status_code=202)
     def start_validation(scan_id: str, body: ValidationRequest):

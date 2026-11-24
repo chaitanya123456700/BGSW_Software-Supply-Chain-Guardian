@@ -5,7 +5,7 @@ async function loadAnalysis(scanId, generation, poll = false) {
   do {
     const state = await getJSON(`/api/scans/${scanId}/analysis`);
     if (generation !== analysisGeneration) return;
-    $("analysis-status").textContent = `${state.status}: ${state.stage || ""}`;
+    $("analysis-status").textContent = `${displayStatus(state.status)}: ${state.stage || ""}`;
     const running = ["queued", "running"].includes(state.status);
     $("run-analysis").disabled = running || window.guardianShell?.busy() || !["completed", "partial"].includes(detectionReport?.status);
     if (state.report && ["completed", "partial"].includes(state.report.status)) {
@@ -15,7 +15,7 @@ async function loadAnalysis(scanId, generation, poll = false) {
       analysisReachability = reachability;
       detectionReport = {...detectionReport, findings: state.report.findings};
       const usage = state.report.ai?.usage || {};
-      $("analysis-status").textContent = `${state.status}: ${state.report.findings.length} findings prioritized. AI requests: ${usage.requests || 0}; cache hits: ${usage.cache_hits || 0}; template fallbacks: ${usage.fallbacks || 0}.`;
+      $("analysis-status").textContent = `${displayStatus(state.status)}: ${state.report.findings.length} findings prioritized. AI requests: ${usage.requests || 0}; cache hits: ${usage.cache_hits || 0}; template fallbacks: ${usage.fallbacks || 0}.`;
       window.guardianRemediation?.load(scanId);
       $("analysis-scope-hint").textContent = "Package reachability and deterministic priority were analyzed. Function-level exploitability remains unknown. AI notes do not change findings or scores.";
       $("detection-coverage").textContent = $("detection-coverage").textContent.replace("Code reachability and priority are not assessed.", "Package reachability and deterministic priorities were analyzed; function-level exploitability remains unknown.");
@@ -85,8 +85,8 @@ window.guardianAnalysis = {
       addText($("finding-detail"), "p", `${nodeLabel(id)}: ${reach.status}. ${reach.reason}`);
       for (const witness of reach.witnesses || []) {
         addText($("finding-detail"), "p", `${witness.file}:${witness.line}${witness.inherited_from ? " · inherited possible dependency path" : " · package import observation"}`, "path-witness");
-        for (const evidenceId of witness.evidence_ids || []) {
-          const button = addText($("finding-detail"), "button", "Inspect import evidence"); button.type = "button";
+        for (const [index, evidenceId] of (witness.evidence_ids || []).entries()) {
+          const button = addText($("finding-detail"), "button", `Inspect import evidence ${index + 1}`); button.type = "button";
           button.addEventListener("click", async () => {
             try {
               const evidence = await getJSON(`/api/scans/${detectionScan}/analysis-evidence/${encodeURIComponent(evidenceId)}`);

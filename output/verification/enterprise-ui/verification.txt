@@ -1,0 +1,33 @@
+Guardian enterprise UI and remediation verification — 24 November 2026
+
+Result
+The live controlled fixture completed discovery, detection, analysis, patch review, and independent validation. The browser opened Remediation when review became available. The exact manifest and lockfile diff loaded directly with red removals and green additions. Acceptance without selecting a reviewed diff was blocked. Selecting lodash enabled Accept selected changes; acceptance persisted and enabled validation. Dependency verification passed, four findings resolved, two remained, and zero findings were introduced. Build/tests were not requested. The original source was unchanged.
+
+Tests
+210 Python tests passed; two network integration tests were deselected.
+11 JavaScript tests passed, including selected-only approval across two proposals, missing-diff blocking, risk-reason enforcement, late responses after switching scans, and pipeline presentation.
+JavaScript syntax checks and git diff whitespace checks passed.
+The standalone Playwright smoke script was updated but was not run. Live browser verification used the built-in browser through cua_repl instead.
+
+Visual checks
+Concept: /Users/kchaitanya/Documents/Guardinan_AI_Agent/output/design/enterprise-remediation-concept.png
+Method: built-in browser screenshots, inspected with view_image alongside the concept.
+Desktop viewport: 1487 × 1058, matching the generated concept's native dimensions.
+Mobile viewport: 390 × 844; document width remained 390, the diff stayed inside its scroll area, and all five compact stages fit between x=19 and x=371.
+Inspected: white and cool gray surfaces with industrial blue controls; Arial typography and hierarchy; horizontal navigation and current-tab underline; selectable proposal list beside the dark monospace diff; red and green line contrast; restrained borders and spacing; manual-review explanations; optional Docker validation; responsive stacking.
+Fixed: dark purple theme, oversized marketing headings, initially event-dependent diff loading, unclear empty-plan guidance, raw partial labels in workflow presentation, offscreen mobile stages, duplicated import-evidence button labels, and excessive finding-list page length.
+Above-the-fold copy check: headings use the requested formal language; Remediation and its design subtitle match the concept. Existing repository identity, commit, source coverage, and six application routes were deliberately retained. No fake example metrics or proposed versions were copied from the concept.
+Intentional concept differences: repository entry remains in Overview; all six existing views remain accessible; actual live proposal count and registry-verified version replace the concept's example values; exact independent manifest and lockfile diffs replace the concept's illustrative combined diff; audit explanations and optional individual review actions remain available. This verifies the concept's visual system and workflow, not pixel identity to an illustrative image.
+
+Artifacts
+remediation-desktop.jpg — accepted patch and live validation result.
+remediation-mobile.jpg — responsive diff, complete compact stage rail, and validation result.
+manual-review-desktop.jpg / manual-review-mobile.jpg — original repository's unsupported plan and explanatory reasons.
+findings-desktop.jpg — advisory detail organization and metric definitions, captured before final list-height and import-label refinements.
+
+Limits
+Automatic patches still require supported, source-verified candidates. Unsupported dependency references are not rewritten merely to produce a demo diff. Approvals validate independent temporary copies; they do not modify the original checkout. Rejected patches and accepted risks do not resolve findings. Original machine-readable status values remain intact in audit artifacts. The existing server's configured live providers remain responsible for demo advisory and registry availability.
+
+Concept generation
+Tool: built-in image_gen.
+Prompt: Use case: ui-mockup. Design concept only, full desktop screen 1440x1100 for Supply Chain Guardian enterprise security dashboard, formal presentation suitable for Bosch. Code-native implementable interface. White main surface, pale cool gray page, dark navy text, restrained industrial blue #007bc0 accent, crisp thin borders, compact 4px radii, Arial/Helvetica typography. Top white masthead Supply Chain Guardian, small subtitle Dependency security workspace. Horizontal tabs Overview, Findings, Graph, Remediation, Reports. Primary screen Remediation heading and subtitle Review proposed dependency updates before validation. 5 compact pipeline stages Discover, Detect, Analyze, Remediate, Validate with Finished / Awaiting approval statuses. Remediation two-column area left selectable proposals list with two checkboxes lodash 4.17.20 to 4.17.21 and minimist 1.2.5 to 1.2.8, right large dark terminal unified diff package-lock.json with red removed lines and green added lines, monospace. Toolbar Select all pending, Accept selected changes, Reject selected, selected count. Below calm manual review accordion with clear explanation; validation panel with optional offline Docker test checkbox, Validate accepted patches button. Header repository URL field and Start pipeline button optional compact. No invented metrics, imagery, illustrations, decorative gradients, purple, rounded floating cards, hero marketing, badges above title or Bosch logo. Professional organized data-heavy UI. Render complete readable concept.

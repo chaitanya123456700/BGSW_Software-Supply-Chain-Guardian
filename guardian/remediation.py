@@ -36,6 +36,19 @@ def source(scan):
     return sources[0]
 
 
+def checkout_target(scan):
+    marker = scan / "checkout-target.json"
+    if not marker.exists():
+        return scan, source(scan)
+    identifier = read_json(scan, "checkout-target.json")[0].get("origin_scan_id", "")
+    if not re.fullmatch(r"[0-9a-f]{32}", identifier):
+        raise ValueError("Invalid local checkout origin")
+    origin = scan.parent / identifier
+    if origin.is_symlink() or not (origin / "status.json").is_file():
+        raise ValueError("Original local checkout is unavailable")
+    return origin, source(origin)
+
+
 def snapshot(repo):
     # Secrets and tool configuration are never copied into a validation workspace.
     files = {}

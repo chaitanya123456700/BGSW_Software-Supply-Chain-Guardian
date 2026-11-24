@@ -32,8 +32,9 @@ function showFinding(finding) {
   $("evidence-detail").hidden = true;
   addText($("finding-detail"), "h3", finding.title);
   addText($("finding-detail"), "p", findingKind(finding), "finding-kind");
+  addText($("finding-detail"), "h4", "Advisory and verification");
   addText($("finding-detail"), "p", finding.explanation);
-  addText($("finding-detail"), "p", `${finding.verification_status} · ${finding.classification} · Applicability: ${finding.version_applicability}`, "finding-meta");
+  addText($("finding-detail"), "p", `${displayStatus(finding.verification_status)} · ${displayStatus(finding.classification)} · Applicability: ${displayStatus(finding.version_applicability)}`, "finding-meta");
   if (typeof finding.confidence === "number") addText($("finding-detail"), "p", `Heuristic confidence: ${Math.round(finding.confidence * 100)}%. Review ranking only; not malware probability.`);
   if (finding.finding_type === "vulnerability") {
     addText($("finding-detail"), "p", `Source severity: ${advisorySeverity(finding)}`);
@@ -42,6 +43,7 @@ function showFinding(finding) {
     const fixes = (finding.source_metadata || []).flatMap(source => (source.affected || []).filter(item => item.package?.ecosystem === "npm" && packages.has(item.package?.name)).flatMap(item => (item.ranges || []).flatMap(range => (range.events || []).filter(event => typeof event.fixed === "string").map(event => event.fixed))));
     addText($("finding-detail"), "p", `Advisory fixed versions: ${[...new Set(fixes)].join(", ") || "not supplied"}. Review actual fixes and validation in Remediation.`);
   }
+  addText($("finding-detail"), "h4", "Affected installation instances");
   for (const id of finding.component_instance_ids) {
     addText($("finding-detail"), "p", nodeLabel(id));
     const button = addText($("finding-detail"), "button", "Show exact instance in graph"); button.type = "button";
@@ -53,10 +55,11 @@ function showFinding(finding) {
       if (node) selectNode(node);
       for (const stat of document.querySelectorAll("#stats [data-stat]")) stat.querySelector("strong").textContent = graph.statistics[stat.dataset.stat] ?? "—";
       $("download-graph").href = `/api/scans/${detectionScan}/graph`;
-      $("coverage").textContent = `Whole repository: ${currentReport.dependency_status}. Coverage: ${currentReport.coverage_status}.`;
+      $("coverage").textContent = `Whole repository: ${currentReport.dependency_status}. Coverage: ${displayStatus(currentReport.coverage_status)}.`;
     });
   }
   if (!finding.component_instance_ids.length) addText($("finding-detail"), "p", "Source-level finding. Application/component ownership was not inferred.");
+  if (finding.dependency_paths.length) addText($("finding-detail"), "h4", "Dependency paths");
   for (const path of finding.dependency_paths) addText($("finding-detail"), "p", path.nodes.map(id => detectionNodes.get(id)?.name || id).join(" → "), "path-witness");
   for (const warning of finding.graph_coverage_warnings) addText($("finding-detail"), "p", warning, "uncertainty");
   for (const id of finding.advisory_ids) {
@@ -66,7 +69,8 @@ function showFinding(finding) {
   const source = addText($("finding-detail"), "details", "");
   addText(source, "summary", "Source metadata and detector observations");
   addText(source, "pre", JSON.stringify(finding.source_metadata, null, 2));
-  addText($("finding-detail"), "p", `Package reachability: ${finding.reachability_status}. Priority: ${finding.priority_status}. Source consistency: ${finding.source_consistency}.`, "hint");
+  addText($("finding-detail"), "h4", "Priority and reachability");
+  addText($("finding-detail"), "p", `Package reachability: ${displayStatus(finding.reachability_status)}. Priority: ${displayStatus(finding.priority_status)}. Source consistency: ${displayStatus(finding.source_consistency)}.`, "hint");
   if (typeof finding.risk_score === "number") {
     addText($("finding-detail"), "p", `Deterministic priority: ${finding.risk_score}/100 (${finding.priority_status}). Heuristic evidence confidence: ${Math.round(finding.risk_confidence * 100)}%. This is not a CVSS score or malware probability.`);
     const factors = addText($("finding-detail"), "details", "");
@@ -122,16 +126,24 @@ function renderDetection(report) {
   detectionReport = report;
   $("finding-detail").replaceChildren(); $("finding-evidence-links").replaceChildren(); $("finding-hint").hidden = false; $("evidence-detail").hidden = true;
   $("detection-metrics").replaceChildren();
-  const metrics = [["Verified vulnerability matches", report.verified_vulnerabilities ?? "Unknown"], ["Verified malicious-package matches", report.verified_malicious_packages ?? 0], ["Change / review signals", report.review_signals ?? report.change_signals ?? "Unknown"], ["Policy violations", report.policy_violations ?? 0], ["Evidence records", report.evidence_count ?? 0]];
-  for (const [label, value] of metrics) { const stat = addText($("detection-metrics"), "div", "", "stat"); addText(stat, "strong", String(value)); addText(stat, "span", label); }
+  const metrics = [
+    ["Verified vulnerability matches", report.verified_vulnerabilities ?? "Unknown", "Exact package/version matches to known vulnerability advisories; not proof of exploitation or a unique-package count."],
+    ["Verified malicious-package matches", report.verified_malicious_packages ?? 0, "Exact matches to malicious-package advisories. Zero means no verified match in checked sources, not a malware-free guarantee."],
+    ["Change / review signals", report.review_signals ?? report.change_signals ?? "Unknown", "Observations flagged for investigation, such as scripts, source changes, or name similarity. Includes policy violations. Signals are not confirmed attacks."],
+    ["Policy violations", report.policy_violations ?? 0, "A subset of review signals that breach configured repository security rules. Counts overlap; do not add these metrics together."],
+    ["Evidence records", report.evidence_count ?? 0, "Retained source records supporting the scan, including metadata and tool observations. This is not a vulnerability count."]
+  ];
+  for (const [label, value, explanation] of metrics) {
+    const stat = addText($("detection-metrics"), "div", "", "stat"); addText(stat, "strong", String(value)); addText(stat, "span", label); addText(stat, "small", explanation);
+  }
   const vulnerability = report.vulnerabilities || {};
-  $("detection-coverage").textContent = `Overall coverage: ${report.coverage_status || "unknown"}. Advisory checks: ${vulnerability.status || "unknown"}; ${vulnerability.completed_package_versions ?? 0}/${vulnerability.queried_package_versions ?? 0} exact package/version queries completed. Policy: ${report.policy_status || "not_run"}. ${report.suspicious_changes?.comparison_status || "comparison_unavailable"}. Code reachability and priority are not assessed.`;
+  $("detection-coverage").textContent = `Overall coverage: ${displayStatus(report.coverage_status || "unknown")}. Advisory checks: ${displayStatus(vulnerability.status || "unknown")}; ${vulnerability.completed_package_versions ?? 0}/${vulnerability.queried_package_versions ?? 0} exact package/version queries completed. Policy: ${report.policy_status || "not_run"}. ${report.suspicious_changes?.comparison_status || "comparison_unavailable"}. Code reachability and priority are not assessed.`;
   const warnings = [...(report.errors || []), ...(report.warnings || [])];
   $("detection-errors").hidden = !warnings.length; $("detection-error-list").replaceChildren();
   for (const warning of warnings) addText($("detection-error-list"), "li", warning);
   $("source-inspections").textContent = JSON.stringify({changes: report.suspicious_changes?.inspections || [], static_signals: report.static_signals || {status: "not_run"}}, null, 2);
   $("deliver-risks").textContent = `${(report.verified_vulnerabilities ?? 0) + (report.verified_malicious_packages ?? 0)} verified advisories · ${report.review_signals ?? report.change_signals ?? "Unknown"} review signals`;
-  $("deliver-evidence").textContent = `${report.evidence_count ?? 0} source records · ${report.status}`;
+  $("deliver-evidence").textContent = `${report.evidence_count ?? 0} source records · ${displayStatus(report.status)}`;
   for (const [id, route] of [["download-vulnerabilities", "vulnerabilities"], ["download-changes", "suspicious-changes"], ["download-detection", "detection-report"], ["download-evidence", "evidence"], ["download-static-signals", "static-signals"]]) {
     $(id).href = `/api/scans/${detectionScan}/${route}`; $(id).download = "";
     if (id === "download-static-signals") $(id).hidden = !report.static_signals;
@@ -149,7 +161,7 @@ async function followDetection(generation) {
     while (generation === detectionGeneration) {
       const state = await getJSON(`/api/scans/${detectionScan}/detection`);
       if (generation !== detectionGeneration) break;
-      $("detection-status").textContent = `${state.status}: ${state.stage || ""}${state.error ? ". " + state.error : ""}`;
+      $("detection-status").textContent = `${displayStatus(state.status)}: ${state.stage || ""}${state.error ? ". " + state.error : ""}`;
       if (!["queued", "running"].includes(state.status)) {
         if (state.report) renderDetection(state.report);
         else renderFindingList();
@@ -174,7 +186,7 @@ for (const id of ["finding-search", "finding-type", "finding-verification"]) $(i
 window.guardianDetection = {load(scan, phase1, dependencyGraph) {
   detectionScan = scan; detectionReport = null; detectionGeneration += 1; detectionWholeGraph = dependencyGraph;
   detectionNodes = new Map(dependencyGraph.nodes.map(node => [node.id, node]));
-  $("deliver-components").textContent = `${phase1.statistics?.component_count ?? "Unknown"} observations · ${phase1.coverage_status || phase1.status}`;
+  $("deliver-components").textContent = `${phase1.statistics?.component_count ?? "Unknown"} observations · ${displayStatus(phase1.coverage_status || phase1.status)}`;
   $("deliver-sbom").textContent = phase1.sbom?.status === "completed" ? "CycloneDX validated" : "Unavailable / incomplete";
   $("deliver-graph").textContent = `${phase1.statistics?.edge_count ?? "Unknown"} resolved edges · ${phase1.statistics?.unresolved_edges ?? "Unknown"} unresolved`;
   $("deliver-risks").textContent = "Detection not run"; $("deliver-evidence").textContent = "Phase 1 source evidence available";
