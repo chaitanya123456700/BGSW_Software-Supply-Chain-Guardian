@@ -40,13 +40,13 @@ Optional Gemini credentials go in the ignored `.env` file. Without credentials, 
 
 ## Team Members
 
-| S. No. | Name                       | Roll Number      |
-|--------|----------------------------|------------------|
-| 1      | Inaganti Rahul Chowdary    | CB.SC.U4AIE23232 |
-| 2      | Vatturu Pardheev           | CB.SC.U4AIE23344 |
-| 3      | Sanjushree R               | BL.EN.U4AIE23130 |
-| 4      | Aakash Raj V               | CB.AI.U4AID23106 |
-| 5      | Kuppireddygari Chaithanya  | AM.AI.U4AID23045 |
+| S. No. | Name | Roll Number | Contribution areas |
+| --- | --- | --- | --- |
+| 1 | Inaganti Rahul Chowdary | CB.SC.U4AIE23232 | **Backend & orchestration:** FastAPI endpoints, scan lifecycle, module coordination, and persistent pipeline checkpoints. |
+| 2 | Vatturu Pardheev | CB.SC.U4AIE23344 | **UI/UX & frontend:** dashboard design, light/dark themes, responsive layouts, dependency graph interactions, and accessible review workflows. |
+| 3 | Sanjushree R | BL.EN.U4AIE23130 | **Security detection & risk analysis:** vulnerability matching, suspicious-package signals, policy checks, and evidence-backed risk prioritization. |
+| 4 | Aakash Raj V | CB.AI.U4AID23106 | **AI integration & explanations:** provider gateway, bounded prompts, structured response validation, caching, and labeled fallback notes. |
+| 5 | Kuppireddygari Chaithanya | AM.AI.U4AID23045 | **Dependency discovery & validation:** SBOM generation, dependency extraction, remediation verification, integration testing, and technical documentation. |
 
 ---
 
