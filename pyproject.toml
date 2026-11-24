@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "supply-chain-guardian"
+version = "0.1.0"
+description = "Local, evidence-backed repository dependency discovery"
+requires-python = ">=3.11"
+dependencies = ["fastapi>=0.115,<1", "pydantic>=2.10,<3", "uvicorn>=0.30,<1", "networkx>=3.4,<3.5", "jsonschema>=4.23,<5", "httpx>=0.27,<1", "PyYAML>=6,<7", "packaging>=24,<27", "semantic-version>=2.10,<3", "cvss>=3.6,<4"]
+
+[project.optional-dependencies]
+test = ["pytest>=8,<10", "httpx>=0.27,<1"]
+
+[tool.setuptools.package-data]
+guardian = ["static/*", "schemas/*", "policies/*"]
+
+[tool.setuptools.packages.find]
+include = ["guardian*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["integration: requires GitHub network access and Syft"]
+

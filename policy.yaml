@@ -1,0 +1,8 @@
+version: 1
+rules:
+  no_git_dependencies: true
+  no_unreviewed_install_scripts: true
+# Add a review only after inspecting the exact lifecycle command.
+# Repository review: {file: package.json, lifecycle: postinstall, sha256: <command hash>}
+# Dependency review: {package: name, version: 1.2.3, lifecycle: install, sha256: <command hash>}
+reviewed_install_scripts: []
