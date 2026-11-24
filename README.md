@@ -1,6 +1,43 @@
 # BGSW_Software-Supply-Chain-Guardian
 AI-assisted software supply chain security platform. Scans a GitHub repo, builds the dependency graph and SBOM, detects vulnerabilities and suspicious packages, prioritizes risk, proposes safe fixes, and validates them with evidence-backed before/after reports.
 
+## Local setup on Windows (Docker Desktop)
+
+Start Docker Desktop with the Linux engine running (resume it if paused). The scan launcher uses Unix resource limits, so use the included Linux container on Windows.
+
+Run these commands in PowerShell from the repository root:
+
+```powershell
+# First setup only; leave an existing .env intact.
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+docker compose up --build -d
+```
+
+Open <http://127.0.0.1:8001>. Port 8001 avoids the other local project's service on port 8000. The container includes Python, Git, Node/npm and Syft. No host Python environment or frontend install is required. Source is mounted from this checkout; scan data persists in `data/scans/`.
+
+```powershell
+# Start later (after starting/resuming Docker Desktop).
+docker compose up -d
+
+# Status and logs.
+docker compose ps
+docker compose logs -f guardian
+
+# Restart after source or .env changes.
+docker compose restart guardian
+
+# Rebuild after changing dependencies or Dockerfile.
+docker compose up --build -d
+
+# Run the test suite inside Linux.
+docker compose exec guardian python -m pytest -q
+
+# Stop; local scan data is retained.
+docker compose down
+```
+
+Optional Gemini credentials go in the ignored `.env` file. Without credentials, AI explanations use labeled templates. No model download is needed. The optional scanned-project Docker build/test stage is not configured by this setup and remains `not_run`; it requires a separately configured digest-pinned test image and Docker access inside the execution environment.
+
 ## Team Members
 
 | S. No. | Name                       | Roll Number      |

@@ -1,0 +1,19 @@
+name: bgsw-guardian
+
+services:
+  guardian:
+    image: bgsw-guardian:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "127.0.0.1:8001:8000"
+    volumes:
+      - .:/app
+    init: true
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)"]
+      interval: 15s
+      timeout: 10s
+      start_period: 15s
+      retries: 3
