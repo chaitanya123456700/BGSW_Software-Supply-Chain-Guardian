@@ -15,6 +15,7 @@ from .phase2 import run_detection
 from .pipeline import analyze_repository
 from .process import SCAN_CANCEL_CHECK, SCAN_DEADLINE, run_tool
 from .remediation import digest, npm_operation, reviews, snapshot, source, verify_plan
+from .branch_validation import compatibility, export_branches
 
 
 def component_set(document):
@@ -68,7 +69,8 @@ def container_tests(repo, *, requested):
             "--env=HOME=/tmp", "--env=NPM_CONFIG_CACHE=/tmp/npm-cache", "--entrypoint=sh", image, "-c", driver], repo, timeout=90, check=False)
         return {"status": "passed" if completed.returncode == 0 else "failed", "commands": commands,
                 "image": image, "network": "none", "stdout_sha256": digest(completed.stdout.encode()),
-                "stderr_sha256": digest(completed.stderr.encode()), "exit_code": completed.returncode}
+                "stderr_sha256": digest(completed.stderr.encode()), "exit_code": completed.returncode,
+                "stdout": completed.stdout[-50000:], "stderr": completed.stderr[-50000:]}
     finally:
         # A killed CLI does not necessarily stop its Docker daemon container.
         cancellation = SCAN_CANCEL_CHECK.set(lambda: None)
@@ -131,6 +133,17 @@ def run_validation(scan, store, *, osv_transport=None, metadata_transport=None, 
                         target = copy / relative
                         target.parent.mkdir(parents=True, exist_ok=True)
                         target.write_bytes(raw)
+                    result['baseline_tests'] = {'status': 'not_run', 'reason': 'Build and tests were not requested'}
+                    if run_tests:
+                        baseline = Path(directory) / 'baseline'
+                        shutil.copytree(copy, baseline)
+                        try:
+                            baseline_project = baseline / Path(proposal['manifest_path']).parent
+                            npm_operation(baseline_project, ['ci'])
+                            result['baseline_tests'] = container_tests(baseline_project, requested=True)
+                        except Exception as exc:
+                            SCAN_CANCEL_CHECK.get()()
+                            result['baseline_tests'] = {'status': 'failed', 'reason': str(exc)[:1500]}
                     for original in proposal["before"]:
                         if digest(safe_file(copy, original).read_bytes()) != proposal["before"][original]:
                             raise ValueError("Original file does not match approved patch")
@@ -146,6 +159,7 @@ def run_validation(scan, store, *, osv_transport=None, metadata_transport=None, 
                     result["rebuild"]["status"] = "passed"
                     # Installed package contents are never scanned as repository source.
                     result["tests"] = container_tests(project, requested=run_tests)
+                    result['application_compatibility'] = compatibility(result['baseline_tests'], result['tests'])
                     shutil.rmtree(project / "node_modules", ignore_errors=True)
                     if snapshot(copy) != approved_snapshot:
                         raise ValueError("Rebuild changed the approved source snapshot")
@@ -174,6 +188,13 @@ def run_validation(scan, store, *, osv_transport=None, metadata_transport=None, 
                     result["status"] = ("failed" if result["dependency_verification"] == "failed" or result["tests"]["status"] == "failed" or after["status"] == "failed"
                         else "passed" if result["dependency_verification"] == "passed" and result["tests"]["status"] == "passed" and result["sbom_diff"]["status"] == "completed" and after["status"] == "completed"
                         else "partial")
+                    if result['application_compatibility']['status'] != 'passed' and result['status'] == 'passed':
+                        result['status'] = 'partial'
+                    try:
+                        result['branch_comparison'] = export_branches(repo, proposal, artifacts, saved)
+                    except Exception as exc:
+                        SCAN_CANCEL_CHECK.get()()
+                        result['branch_comparison'] = {'status': 'failed', 'reason': str(exc)[:1500]}
             except Exception as exc:
                 SCAN_CANCEL_CHECK.get()()
                 result.update(status="failed")

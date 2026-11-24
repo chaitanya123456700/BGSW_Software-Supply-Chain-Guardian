@@ -139,6 +139,11 @@ async function validationRefresh(scan, generation, poll = false) {
         addText(card, "h3", `Validation: ${result.status}`);
         addText(card, "p", `Decision: ${result.decision}. Dependency verification: ${result.dependency_verification || "not_run"}. Build/tests: ${result.tests?.status || "not_run"}.`);
         if (result.tests?.reason) addText(card, "p", result.tests.reason);
+        if (result.application_compatibility) {
+          addText(card, 'h3', `Application compatibility: ${result.application_compatibility.status}`);
+          addText(card, 'p', result.application_compatibility.claim);
+          addText(card, 'p', `Vulnerable baseline: ${result.baseline_tests?.status || 'not_run'}. Guardian fixed: ${result.tests?.status || 'not_run'}.`);
+        }
         if (result.finding_diff) addText(card, "p", `Findings resolved: ${result.finding_diff.resolved.length}; remaining: ${result.finding_diff.remaining.length}; introduced: ${result.finding_diff.introduced.length}.`);
         if (result.dependency_diff) addText(card, "p", `Removed: ${result.dependency_diff.removed.join(", ") || "none"}. Added: ${result.dependency_diff.added.join(", ") || "none"}.`);
         for (const error of result.errors || []) addText(card, "p", error);
@@ -147,6 +152,12 @@ async function validationRefresh(scan, generation, poll = false) {
           for (const [artifact, title] of [["detection", "After-scan findings"], ["evidence", "After-scan evidence index"], ...(result.sbom_diff?.status === "completed" ? [["sbom", "After-scan SBOM"]] : [])]) {
             const link = addText(card, "a", title + " JSON ");
             link.href = `/api/scans/${scan}/validation/${id}/${artifact}`;
+          }
+          if (result.branch_comparison?.status === 'created') {
+            addText(card, 'p', 'Compare vulnerable and guardian-fixed branches. Each bundle contains one independently approved patch.');
+            for (const [artifact, title] of [['branches', 'Download two-branch Git bundle'], ['branch-diff', 'View branch diff'], ['branch-comparison', 'Branch commit evidence']]) {
+              const link = addText(card, 'a', title); link.href = `/api/scans/${scan}/validation/${id}/${artifact}`;
+            }
           }
         }
       }

@@ -589,13 +589,15 @@ def create_app(data_directory: Path | None = None, *, osv_transport=None, deps_t
     @app.get("/api/scans/{scan_id}/validation/{result_id}/{artifact}")
     def validation_artifact(scan_id: str, result_id: str, artifact: str):
         allowed = {"sbom": "sbom.json", "components": "components.json", "graph": "dependency_graph.json",
-                   "detection": "detection_report.json", "discovery": "discovery_report.json", "evidence": "evidence/index.json", "result": "validation_result.json"}
+                   "detection": "detection_report.json", "discovery": "discovery_report.json", "evidence": "evidence/index.json", "result": "validation_result.json",
+                   "branches": "branches.bundle", "branch-comparison": "branch-comparison.json", "branch-diff": "branch-diff.patch"}
         if not re.fullmatch(r"[0-9a-f]{32}", result_id) or artifact not in allowed:
             raise HTTPException(404, "Validation artifact not found")
         path = directory(scan_id) / "artifacts/validation" / result_id / allowed[artifact]
         if not path.is_file():
             raise HTTPException(404, "Validation artifact not found")
-        return FileResponse(path, media_type="application/json", filename=path.name)
+        media = 'application/octet-stream' if artifact == 'branches' else 'text/plain' if artifact == 'branch-diff' else 'application/json'
+        return FileResponse(path, media_type=media, filename=path.name)
 
     @app.get("/api/scans/{scan_id}/analysis-evidence/{evidence_id}")
     def get_analysis_evidence(scan_id: str, evidence_id: str):
