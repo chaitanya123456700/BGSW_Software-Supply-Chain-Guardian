@@ -42,7 +42,7 @@ Optional Gemini credentials go in the ignored `.env` file. Without credentials, 
 
 | S. No. | Name | Roll Number | Contribution areas |
 | --- | --- | --- | --- |
-| 1 | Inaganti Rahul Chowdary | AM.AI.U4AID23045 | **Backend development, Architecture Analysis, LLM Integration & pipeline orchestration** |
+| 1 | Kuppireddy gari chaithanya | AM.AI.U4AID23045 | **Backend development, Architecture Analysis, LLM Integration & pipeline orchestration** |
 | 2 | Vatturu Pardheev | CB.SC.U4AIE23344 | **UI/UX, frontend development & SBOM generation** |
 | 3 | Sanjushree R | BL.EN.U4AIE23130 | **Vulnerability detection & risk analysis** |
 | 4 | Aakash Raj V | CB.AI.U4AID23106 | **AI integration & finding explanations** |
